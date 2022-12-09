@@ -1,4 +1,10 @@
+package javalearn;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -15,9 +21,10 @@ public class WebCrawlerDemo {
     public static void main(String[] args) throws InterruptedException {
         WebCrawlerDemo webCrawlerDemo = new WebCrawlerDemo();
         Map<String, Boolean> oldMap = new LinkedHashMap<String, Boolean>(); // 存储链接-是否被遍历,   键值对
-        String baseUrl = "";
+        String baseUrl = "http://pkg.loongnix.cn/loongnix-server/8.4/cloud/loongarch64/release/openstack-ussuri/repodata";
         oldMap.put(baseUrl, false);
-        webCrawlerDemo.crawlLinks(baseUrl, oldMap);        
+        webCrawlerDemo.crawlLinks(baseUrl, oldMap);       
+        WebCrawlerDemo.downloadRepo("repo.txt", baseUrl+"/");
         System.out.println("任务完成，已退出");
     }
     /**
@@ -38,6 +45,7 @@ public class WebCrawlerDemo {
             if (!mapping.getValue()) {
             	System.out.println("遍历链接:" + mapping.getKey() + "--------check:"+ mapping.getValue());
                 oldLink = mapping.getKey();
+                System.out.println("oldLink:"+oldLink);
                 // 发起GET请求
                 try {
                     URL url = new URL(oldLink);
@@ -51,15 +59,23 @@ public class WebCrawlerDemo {
                         String line = "";
                         Pattern pattern = Pattern.compile("<a.*?href=[\"\']?((https?://)?/?[^\"\']+)[\"\']?.*?>(.+)</a>");                       
                         Matcher matcher = null;
-                        while ((line = reader.readLine()) != null) {
+                        File file = new File("repodata.txt");
+                        FileWriter fw = new FileWriter(file);
+                        BufferedWriter bw = new BufferedWriter(fw);
+                        while ((line = reader.readLine()) != null) {     
+                        	bw.write(line+"\r\n");
                             matcher = pattern.matcher(line);
                             if (matcher.find()) {
-                                String tempLink = matcher.group(1).trim(); // 拿到子链接      
+                                String tempLink = matcher.group(1).trim(); // 拿到子链接                               
                                 if(tempLink.startsWith("?")) 
                                 	continue;                             
-                                if(tempLink.startsWith("/"))
-                                	continue;                                
-                                String newLink = mapping.getKey()+"/"+tempLink;                        
+                                if(tempLink.startsWith("../"))
+                                	continue;   
+                                if(tempLink.startsWith("http"))
+                                	continue;    
+//                                System.out.println("tempLink:"+tempLink);
+                                bw.write(tempLink+"\r\n");
+                                String newLink = mapping.getKey()+"/"+tempLink;     
                                 // 判断获取到的链接是否以http开头
                                 if (!newLink.startsWith("http")) {
                                     if (newLink.startsWith("/"))
@@ -67,37 +83,18 @@ public class WebCrawlerDemo {
                                     else
                                         newLink = baseUrl + "/" + newLink;
                                 }
-                                System.out.println("newLink:"+newLink);
                                 String link = null;
 								//去除链接末尾的/
                                 if(newLink.endsWith("/"))                            
                                   link=newLink.substring(0, newLink.length() - 1);
-                                  System.out.println("check link:"+link);
+//                                  System.out.println("check link:"+link);
                                 	//去重,并判断是否为空
                                 	if (!oldMap.containsKey(link) && !newMap.containsKey(link) && link != null ) {                               
                                 		newMap.put(link, false);
-                                }
-                                if(!newLink.endsWith("/")) {
-                                	String file = newLink;
-                                	System.out.println("wget "+file);
-                                	String[] cmd = new String[] { "/bin/bash", "-c", "wget -v -x -nH  "+file};
-                                	 try {
-                        				 Process pro = Runtime.getRuntime().exec(cmd);
-                                         pro.waitFor();
-                                         BufferedReader br = new BufferedReader(new InputStreamReader(pro.getErrorStream()));
-                                         String str;
-                                         while((str = br.readLine()) != null) {
-                                                 System.out.println(str);
-                        			}} catch (IOException e) {
-                        				// TODO Auto-generated catch block
-                        				e.printStackTrace();
-                        			} catch (InterruptedException e) {
-										// TODO Auto-generated catch block
-										e.printStackTrace();
-									}
-                                }                                                          
+                                }                                                        
                             }
                         }
+                        bw.close();
                     }
                 } catch (MalformedURLException e) {
                     e.printStackTrace();
@@ -116,9 +113,43 @@ public class WebCrawlerDemo {
         //有新链接，继续遍历
         if (!newMap.isEmpty()) {
         	//递归调用
-            oldMap.putAll(crawlLinks(baseUrl, newMap));
+            oldMap.putAll(crawlLinks(baseUrl, newMap));  //由于Map的特性，不会导致出现重复的键值对           
         }          
         return oldMap;
     }
+    
+    private static void downloadRepo(String file, String link) {
+		try {
+			BufferedReader br = new BufferedReader(new FileReader(file));
+			BufferedReader br2 = null;
+			String str = null;
+			try {
+				while((str=br.readLine()) != null) {
+					String[] cmd = new String[] { "/bin/bash", "-c", "wget -v -x -nH "+link+str};
+					try {
+     				   Process pro = Runtime.getRuntime().exec(cmd);
+                     try {
+						pro.waitFor();
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+                      br2 = new BufferedReader(new InputStreamReader(pro.getErrorStream()));
+                     String str2;
+                      while((str2 = br2.readLine()) != null) {
+                             System.out.println(str2);
+     			}}finally {
+     				br.close();
+     				br2.close();
+     			}
+				}
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    }
 }
-
